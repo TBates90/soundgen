@@ -13,24 +13,44 @@ class ConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class FrequencySweepDefinition(ConfigModel):
+    """Frequency automation between two endpoints over the sound duration."""
+
+    start: float = Field(ge=0)
+    end: float = Field(ge=0)
+    curve: Literal["linear", "exponential"] = "linear"
+
+    @model_validator(mode="after")
+    def validate_exponential_endpoints(self) -> FrequencySweepDefinition:
+        """Exponential interpolation requires strictly positive endpoints."""
+
+        if self.curve == "exponential" and (self.start <= 0 or self.end <= 0):
+            raise ValueError("exponential frequency sweeps require positive start and end values")
+        return self
+
+
+PositiveFrequency = Annotated[float, Field(gt=0)]
+FrequencyDefinition = PositiveFrequency | FrequencySweepDefinition
+
+
 class SineGeneratorDefinition(ConfigModel):
     type: Literal["sine"]
-    frequency: float = Field(gt=0)
+    frequency: FrequencyDefinition
 
 
 class SquareGeneratorDefinition(ConfigModel):
     type: Literal["square"]
-    frequency: float = Field(gt=0)
+    frequency: FrequencyDefinition
 
 
 class SawGeneratorDefinition(ConfigModel):
     type: Literal["saw"]
-    frequency: float = Field(gt=0)
+    frequency: FrequencyDefinition
 
 
 class TriangleGeneratorDefinition(ConfigModel):
     type: Literal["triangle"]
-    frequency: float = Field(gt=0)
+    frequency: FrequencyDefinition
 
 
 class NoiseGeneratorDefinition(ConfigModel):
