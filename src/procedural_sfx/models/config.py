@@ -36,6 +36,7 @@ class TriangleGeneratorDefinition(ConfigModel):
 class NoiseGeneratorDefinition(ConfigModel):
     type: Literal["noise"]
     noise_type: Literal["white"] = "white"
+    seed: int | None = Field(default=None, ge=0)
 
 
 GeneratorDefinition = Annotated[
