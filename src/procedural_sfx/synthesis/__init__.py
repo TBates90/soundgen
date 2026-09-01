@@ -1,0 +1,1 @@
+"""Procedural audio synthesis components."""
