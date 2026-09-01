@@ -1,3 +1,5 @@
 """Procedural SFX generation package."""
 
-__all__: list[str] = []
+from procedural_sfx.audio import AudioBuffer
+
+__all__ = ["AudioBuffer"]
