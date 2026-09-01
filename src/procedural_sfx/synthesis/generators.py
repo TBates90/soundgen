@@ -8,6 +8,8 @@ import numpy as np
 
 from procedural_sfx.audio import AudioBuffer
 from procedural_sfx.models import (
+    FrequencyDefinition,
+    FrequencySweepDefinition,
     GeneratorDefinition,
     NoiseGeneratorDefinition,
     SawGeneratorDefinition,
@@ -53,17 +55,54 @@ def _validate_frequency(frequency: float) -> float:
     return value
 
 
+def _frequency_values(frequency: FrequencyDefinition, sample_count: int) -> np.ndarray:
+    """Resolve a constant frequency or configured sweep to per-sample values."""
+
+    if isinstance(frequency, FrequencySweepDefinition):
+        start = float(frequency.start)
+        end = float(frequency.end)
+        if not np.isfinite(start) or not np.isfinite(end):
+            raise ValueError("frequency sweep endpoints must be finite")
+
+        if frequency.curve == "linear":
+            values = np.linspace(start, end, sample_count, dtype=np.float64)
+        elif frequency.curve == "exponential":
+            if start <= 0 or end <= 0:
+                raise ValueError("exponential frequency sweeps require positive endpoints")
+            values = np.geomspace(start, end, sample_count, dtype=np.float64)
+        else:  # Defensive: Pydantic rejects unsupported curves before runtime.
+            raise ValueError(f"unsupported frequency curve: {frequency.curve}")
+
+        return values
+
+    value = _validate_frequency(frequency)
+    return np.full(sample_count, value, dtype=np.float64)
+
+
+def _phase_cycles(frequencies: np.ndarray, sample_rate: int) -> np.ndarray:
+    """Integrate instantaneous frequency into oscillator phase measured in cycles."""
+
+    cycles = np.zeros(frequencies.size, dtype=np.float64)
+    if frequencies.size > 1:
+        cycles[1:] = np.cumsum(frequencies[:-1], dtype=np.float64) / float(sample_rate)
+    return cycles
+
+
 class _PeriodicGenerator:
-    """Shared implementation for fixed-frequency periodic oscillators."""
+    """Shared implementation for constant or frequency-automated oscillators."""
 
     __slots__ = ("frequency",)
 
-    def __init__(self, frequency: float) -> None:
-        self.frequency = _validate_frequency(frequency)
+    def __init__(self, frequency: FrequencyDefinition) -> None:
+        if isinstance(frequency, FrequencySweepDefinition):
+            self.frequency = frequency
+        else:
+            self.frequency = _validate_frequency(frequency)
 
     def generate(self, duration: float, sample_rate: int) -> AudioBuffer:
         count = _sample_count(duration, sample_rate)
-        cycles = np.arange(count, dtype=np.float64) * self.frequency / float(sample_rate)
+        frequencies = _frequency_values(self.frequency, count)
+        cycles = _phase_cycles(frequencies, sample_rate)
         samples = self._waveform(cycles)
         return AudioBuffer(np.asarray(samples, dtype=np.float32), sample_rate)
 
@@ -72,7 +111,7 @@ class _PeriodicGenerator:
 
 
 class SineGenerator(_PeriodicGenerator):
-    """Generate a fixed-frequency sine wave."""
+    """Generate a sine wave with constant or automated frequency."""
 
     def _waveform(self, cycles: np.ndarray) -> np.ndarray:
         return np.sin(2.0 * np.pi * cycles)
